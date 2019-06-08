@@ -131,7 +131,7 @@ def prep_display(dets_out, img, h, w, undo_transform=True, class_color=False, ma
     """
     if undo_transform:
         img_numpy = undo_image_transformation(img, w, h)
-        img_gpu = torch.Tensor(img_numpy).cuda()
+        img_gpu = torch.Tensor(img_numpy)
     else:
         img_gpu = img / 255.0
         h, w, _ = img.shape
@@ -140,7 +140,7 @@ def prep_display(dets_out, img, h, w, undo_transform=True, class_color=False, ma
         t = postprocess(dets_out, w, h, visualize_lincomb = args.display_lincomb,
                                         crop_masks        = args.crop,
                                         score_threshold   = args.score_threshold)
-        torch.cuda.synchronize()
+        #torch.cuda.synchronize()
 
     with timer.env('Copy'):
         if cfg.eval_mask_branch:
@@ -184,7 +184,7 @@ def prep_display(dets_out, img, h, w, undo_transform=True, class_color=False, ma
         masks = masks[:num_dets_to_consider, :, :, None]
         
         # Prepare the RGB images for each mask given their color (size [num_dets, h, w, 1])
-        colors = torch.cat([get_color(j, on_gpu=img.device.index).view(1, 1, 1, 3) for j in range(num_dets_to_consider)], dim=0)
+        colors = torch.cat([(torch.Tensor(get_color(j)).float() / 255 ).view(1, 1, 1, 3) for j in range(num_dets_to_consider)], dim=0)
         masks_color = masks.repeat(1, 1, 1, 3) * colors * mask_alpha
 
         # This is 1 everywhere except for 1-mask_alpha where the mask is
@@ -385,8 +385,8 @@ def prep_metrics(ap_data, dets, img, gt, gt_masks, h, w, num_crowd, image_id, de
 
         classes = list(classes.cpu().numpy().astype(int))
         scores = list(scores.cpu().numpy().astype(float))
-        masks = masks.view(-1, h*w).cuda()
-        boxes = boxes.cuda()
+        masks = masks.view(-1, h*w)
+        boxes = boxes
 
 
     if args.output_coco_json:
@@ -558,7 +558,7 @@ def badhash(x):
     return x
 
 def evalimage(net:Yolact, path:str, save_path:str=None):
-    frame = torch.from_numpy(cv2.imread(path)).cuda().float()
+    frame = torch.from_numpy(cv2.imread(path)).float()
     batch = FastBaseTransform()(frame.unsqueeze(0))
     preds = net(batch)
 
@@ -611,8 +611,8 @@ def evalvideo(net:Yolact, path:str):
         print('Could not open video "%s"' % path)
         exit(-1)
     
-    net = CustomDataParallel(net).cuda()
-    transform = torch.nn.DataParallel(FastBaseTransform()).cuda()
+    net = CustomDataParallel(net)
+    transform = torch.nn.DataParallel(FastBaseTransform())
     frame_times = MovingAverage(100)
     fps = 0
     # The 0.8 is to account for the overhead of time.sleep
@@ -631,7 +631,7 @@ def evalvideo(net:Yolact, path:str):
 
     def transform_frame(frames):
         with torch.no_grad():
-            frames = [torch.from_numpy(frame).cuda().float() for frame in frames]
+            frames = [torch.from_numpy(frame).float() for frame in frames]
             return frames, transform(torch.stack(frames, 0))
 
     def eval_network(inp):
@@ -762,7 +762,7 @@ def savevideo(net:Yolact, in_path:str, out_path:str):
         for i in range(num_frames):
             timer.reset()
             with timer.env('Video'):
-                frame = torch.Tensor(vid.read()[1]).float().cuda()
+                frame = torch.Tensor(vid.read()[1]).float()
                 batch = transform(frame.unsqueeze(0))
                 preds = net(batch)
                 processed = prep_display(preds, frame, None, None, undo_transform=False, class_color=True)
@@ -859,7 +859,7 @@ def evaluate(net:Yolact, dataset, train_mode=False):
 
                 batch = Variable(img.unsqueeze(0))
                 if args.cuda:
-                    batch = batch.cuda()
+                    batch = batch
 
             with timer.env('Network Extra'):
                 preds = net(batch)
@@ -1015,7 +1015,7 @@ if __name__ == '__main__':
         print(' Done.')
 
         if args.cuda:
-            net = net.cuda()
+            net = net
 
         evaluate(net, dataset)
 
