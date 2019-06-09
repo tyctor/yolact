@@ -686,8 +686,48 @@ def evalvideo(net:Yolact, path:str):
             while time.time() < target_time:
                 time.sleep(0.001)
 
+    def process_video():
+        nonlocal frame_buffer, vid, running, sequence
+        extract_frame = lambda x, i: (x[0][i] if x[1][i] is None else x[0][i].to(x[1][i]['box'].device), [x[1][i]])
+        active_frames = []
+        while vid.isOpened() and running:
+            start_time = time.time()
 
-    extract_frame = lambda x, i: (x[0][i] if x[1][i] is None else x[0][i].to(x[1][i]['box'].device), [x[1][i]])
+            # Start loading the next frames from the disk
+            next_frames = pool.apply_async(get_next_frame, args=(vid,))
+
+            # For each frame in our active processing queue, dispatch a job
+            # for that frame using the current function in the sequence
+            for frame in active_frames:
+                frame['value'] = pool.apply_async(sequence[frame['idx']], args=(frame['value'],))
+
+            # For each frame whose job was the last in the sequence (i.e. for all final outputs)
+            for frame in active_frames:
+                if frame['idx'] == 0:
+                    frame_buffer.put(frame['value'].get())
+
+            # Remove the finished frames from the processing queue
+            active_frames = [x for x in active_frames if x['idx'] > 0]
+
+            # Finish evaluating every frame in the processing queue and advanced their position in the sequence
+            for frame in list(reversed(active_frames)):
+                frame['value'] = frame['value'].get()
+                frame['idx'] -= 1
+
+                if frame['idx'] == 0:
+                    # Split this up into individual threads for prep_frame since it doesn't support batch size
+                    active_frames += [{'value': extract_frame(frame['value'], i), 'idx': 0} for i in range(1, args.video_multiframe)]
+                    frame['value'] = extract_frame(frame['value'], 0)
+
+            # Finish loading in the next frames and add them to the processing queue
+            active_frames.append({'value': next_frames.get(), 'idx': len(sequence)-1})
+
+            # Compute FPS
+            frame_times.add(time.time() - start_time)
+            fps = args.video_multiframe / frame_times.get_avg()
+
+            print('\rProcessing FPS: %.2f | Video Playback FPS: %.2f | Frames in Buffer: %d    ' % (fps, video_fps, frame_buffer.qsize()), end='')
+
 
     # Prime the network on the first frame because I do some thread unsafe things otherwise
     print('Initializing model... ', end='')
@@ -697,50 +737,11 @@ def evalvideo(net:Yolact, path:str):
     # For each frame the sequence of functions it needs to go through to be processed (in reversed order)
     sequence = [prep_frame, eval_network, transform_frame]
     pool = ThreadPool(processes=len(sequence) + args.video_multiframe + 2)
-    pool.apply_async(play_video)
-
-    active_frames = []
+    pool.apply_async(process_video)
 
     print()
-    while vid.isOpened() and running:
-        start_time = time.time()
+    play_video()
 
-        # Start loading the next frames from the disk
-        next_frames = pool.apply_async(get_next_frame, args=(vid,))
-        
-        # For each frame in our active processing queue, dispatch a job
-        # for that frame using the current function in the sequence
-        for frame in active_frames:
-            frame['value'] = pool.apply_async(sequence[frame['idx']], args=(frame['value'],))
-        
-        # For each frame whose job was the last in the sequence (i.e. for all final outputs)
-        for frame in active_frames:
-            if frame['idx'] == 0:
-                frame_buffer.put(frame['value'].get())
-
-        # Remove the finished frames from the processing queue
-        active_frames = [x for x in active_frames if x['idx'] > 0]
-
-        # Finish evaluating every frame in the processing queue and advanced their position in the sequence
-        for frame in list(reversed(active_frames)):
-            frame['value'] = frame['value'].get()
-            frame['idx'] -= 1
-
-            if frame['idx'] == 0:
-                # Split this up into individual threads for prep_frame since it doesn't support batch size
-                active_frames += [{'value': extract_frame(frame['value'], i), 'idx': 0} for i in range(1, args.video_multiframe)]
-                frame['value'] = extract_frame(frame['value'], 0)
-
-        
-        # Finish loading in the next frames and add them to the processing queue
-        active_frames.append({'value': next_frames.get(), 'idx': len(sequence)-1})
-        
-        # Compute FPS
-        frame_times.add(time.time() - start_time)
-        fps = args.video_multiframe / frame_times.get_avg()
-
-        print('\rProcessing FPS: %.2f | Video Playback FPS: %.2f | Frames in Buffer: %d    ' % (fps, video_fps, frame_buffer.qsize()), end='')
-    
     cleanup_and_exit()
 
 def savevideo(net:Yolact, in_path:str, out_path:str):
