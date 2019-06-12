@@ -5,6 +5,7 @@ from utils.functions import MovingAverage, ProgressBar
 from layers.box_utils import jaccard, center_size
 from utils import timer
 from utils.functions import SavePath
+from layers import Detect
 from layers.output_utils import postprocess, undo_image_transformation
 import pycocotools
 
@@ -28,6 +29,8 @@ from PIL import Image
 
 import matplotlib.pyplot as plt
 import cv2
+
+import torch.onnx
 
 def str2bool(v):
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -560,7 +563,12 @@ def badhash(x):
 def evalimage(net:Yolact, path:str, save_path:str=None):
     frame = torch.from_numpy(cv2.imread(path)).float()
     batch = FastBaseTransform()(frame.unsqueeze(0))
-    preds = net(batch)
+    pred_outs = net(batch)
+    detect = Detect(cfg.num_classes, bkg_label=0, top_k=200, conf_thresh=0.05, nms_thresh=0.5)
+    preds = detect({'loc': pred_outs[0], 'conf': pred_outs[1], 'mask':pred_outs[2], 'priors': pred_outs[3], 'proto': pred_outs[4]})
+
+    dummy_input = Variable(torch.randn(1, 3, 550, 550))
+    torch.onnx.export(net, dummy_input, "yolact.onnx", verbose=True)
 
     img_numpy = prep_display(preds, frame, None, None, undo_transform=False)
     

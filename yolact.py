@@ -23,7 +23,8 @@ from utils.functions import MovingAverage
 #torch.cuda.current_device()
 
 # As of March 10, 2019, Pytorch DataParallel still doesn't support JIT Script Modules
-use_jit = torch.cuda.device_count() <= 1
+#use_jit = torch.cuda.device_count() <= 1
+use_jit = False
 if not use_jit:
     print('Multiple GPUs detected! Turning off JIT.')
 
@@ -340,12 +341,14 @@ class FPN(ScriptModuleWrapper):
         # For backward compatability, the conv layers are stored in reverse but the input and output is
         # given in the correct order. Thus, use j=-i-1 for the input and output and i for the conv layers.
         j = len(convouts)
+        sizes = [(69, 69), (35, 35)]
         for lat_layer in self.lat_layers:
             j -= 1
 
             if j < len(convouts) - 1:
-                _, _, h, w = convouts[j].size()
-                x = F.interpolate(x, size=(h, w), mode=self.interpolation_mode, align_corners=False)
+                #_, _, h, w = convouts[j].size()
+                #x = F.interpolate(x, size=(h, w), mode=self.interpolation_mode, align_corners=False)
+                x = F.interpolate(x, size=sizes[j], mode=self.interpolation_mode, align_corners=False)
             
             x = x + lat_layer(convouts[j])
             out[j] = x
@@ -613,7 +616,8 @@ class Yolact(nn.Module):
             else:
                 pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
 
-            return self.detect(pred_outs)
+            #return self.detect(pred_outs)
+            return pred_outs['loc'], pred_outs['conf'], pred_outs['mask'], pred_outs['priors'], pred_outs['proto']
 
 
 
