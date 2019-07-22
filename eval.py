@@ -564,8 +564,8 @@ def evalimage(net:Yolact, path:str, save_path:str=None):
     frame = torch.from_numpy(cv2.imread(path)).float()
     batch = FastBaseTransform()(frame.unsqueeze(0))
     pred_outs = net(batch)
-    priors = np.array(pred_outs[3])
-    np.savetxt('priors.txt', priors, fmt="%f", delimiter=",")
+    #priors = np.array(pred_outs[3])
+    #np.savetxt('priors.txt', priors, fmt="%f", delimiter=",")
     detect = Detect(cfg.num_classes, bkg_label=0, top_k=200, conf_thresh=0.05, nms_thresh=0.5)
     preds = detect({'loc': pred_outs[0], 'conf': pred_outs[1], 'mask':pred_outs[2], 'priors': pred_outs[3], 'proto': pred_outs[4]})
 
