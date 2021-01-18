@@ -1,10 +1,10 @@
-from data import *
-from utils.augmentations import SSDAugmentation, BaseTransform
-from utils.functions import MovingAverage, SavePath
-from utils.logger import Log
-from utils import timer
-from layers.modules import MultiBoxLoss
-from yolact import Yolact
+from .data import *
+from .utils.augmentations import SSDAugmentation, BaseTransform
+from .utils.functions import MovingAverage, SavePath
+from .utils.logger import Log
+from .utils import timer
+from .layers.modules import MultiBoxLoss
+from .yolact import Yolact
 import os
 import sys
 import time
