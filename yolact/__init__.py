@@ -680,13 +680,13 @@ class Yolact(nn.Module):
 
 # Some testing code
 if __name__ == '__main__':
-    from utils.functions import init_console
+    from .utils.functions import init_console
     init_console()
 
     # Use the first argument to set the config if you want
     import sys
     if len(sys.argv) > 1:
-        from data.config import set_cfg
+        from .data.config import set_cfg
         set_cfg(sys.argv[1])
 
     net = Yolact()
