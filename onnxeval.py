@@ -1,3 +1,7 @@
+# Compute the prediction with ONNX Runtime
+import onnxruntime as rt
+import numpy
+
 from data import COCODetection, get_label_map, MEANS, COLORS
 from yolact import Yolact
 from utils.augmentations import BaseTransform, FastBaseTransform, Resize
@@ -563,14 +567,21 @@ def badhash(x):
 def evalimage(net:Yolact, path:str, save_path:str=None):
     frame = torch.from_numpy(cv2.imread(path)).float()
     batch = FastBaseTransform()(frame.unsqueeze(0))
-    pred_outs = net(batch)
-    #priors = np.array(pred_outs[3])
-    #np.savetxt('priors.txt', priors, fmt="%f", delimiter=",")
-    detect = Detect(cfg.num_classes, bkg_label=0, top_k=200, conf_thresh=0.05, nms_thresh=0.5)
-    preds = detect({'loc': pred_outs[0], 'conf': pred_outs[1], 'mask':pred_outs[2], 'priors': pred_outs[3], 'proto': pred_outs[4]})
 
-    dummy_input = Variable(torch.randn(1, 3, 550, 550))
-    torch.onnx.export(net, dummy_input, "yolact.onnx", verbose=True)
+    sess = rt.InferenceSession("yolact.onnx")
+    input_name = sess.get_inputs()[0].name
+    loc_name = sess.get_outputs()[0].name
+    conf_name = sess.get_outputs()[1].name
+    mask_name = sess.get_outputs()[2].name
+    priors_name = sess.get_outputs()[3].name
+    proto_name = sess.get_outputs()[4].name
+
+    pred_onx = sess.run([loc_name, conf_name, mask_name, priors_name, proto_name], {input_name: batch.cpu().detach().numpy()})
+
+    #priors = np.loadtxt('priors.txt', delimiter=',', dtype='float32')
+
+    detect = Detect(cfg.num_classes, bkg_label=0, top_k=200, conf_thresh=0.05, nms_thresh=0.5)
+    preds = detect({'loc': torch.from_numpy(pred_onx[0]), 'conf': torch.from_numpy(pred_onx[1]), 'mask': torch.from_numpy(pred_onx[2]), 'priors': torch.from_numpy(pred_onx[3]), 'proto': torch.from_numpy(pred_onx[4])})
 
     img_numpy = prep_display(preds, frame, None, None, undo_transform=False)
     
@@ -1029,5 +1040,3 @@ if __name__ == '__main__':
             net = net
 
         evaluate(net, dataset)
-
-

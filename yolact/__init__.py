@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('TkAgg')
 import torch, torchvision
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,10 +21,11 @@ from .utils.functions import MovingAverage, make_net
 
 # This is required for Pytorch 1.0.1 on Windows to initialize Cuda on some driver versions.
 # See the bug report here: https://github.com/pytorch/pytorch/issues/17108
-torch.cuda.current_device()
+#torch.cuda.current_device()
 
 # As of March 10, 2019, Pytorch DataParallel still doesn't support JIT Script Modules
-use_jit = torch.cuda.device_count() <= 1
+#use_jit = torch.cuda.device_count() <= 1
+use_jit = False
 if not use_jit:
     print('Multiple GPUs detected! Turning off JIT.')
 
@@ -324,12 +327,14 @@ class FPN(ScriptModuleWrapper):
         # For backward compatability, the conv layers are stored in reverse but the input and output is
         # given in the correct order. Thus, use j=-i-1 for the input and output and i for the conv layers.
         j = len(convouts)
+        sizes = [(69, 69), (35, 35)]
         for lat_layer in self.lat_layers:
             j -= 1
 
             if j < len(convouts) - 1:
-                _, _, h, w = convouts[j].size()
-                x = F.interpolate(x, size=(h, w), mode=self.interpolation_mode, align_corners=False)
+                #_, _, h, w = convouts[j].size()
+                #x = F.interpolate(x, size=(h, w), mode=self.interpolation_mode, align_corners=False)
+                x = F.interpolate(x, size=sizes[j], mode=self.interpolation_mode, align_corners=False)
             
             x = x + lat_layer(convouts[j])
             out[j] = x
@@ -476,7 +481,7 @@ class Yolact(nn.Module):
     
     def load_weights(self, path):
         """ Loads weights from a compressed save file. """
-        state_dict = torch.load(path)
+        state_dict = torch.load(path, map_location='cpu')
 
         # For backward compatability, remove these (the new variable is called layers)
         for key in list(state_dict.keys()):
@@ -663,7 +668,6 @@ class Yolact(nn.Module):
                 else:
                     pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
             else:
-
                 if cfg.use_objectness_score:
                     objectness = torch.sigmoid(pred_outs['conf'][:, :, 0])
                     
@@ -674,6 +678,7 @@ class Yolact(nn.Module):
                     pred_outs['conf'] = F.softmax(pred_outs['conf'], -1)
 
             return self.detect(pred_outs, self)
+            #return pred_outs['loc'], pred_outs['conf'], pred_outs['mask'], pred_outs['priors'], pred_outs['proto']
 
 
 
